@@ -1,395 +1,283 @@
 # 🎬 SmartMovie — Intelligent Movie Recommendation System
 
-A content-based movie recommender that uses **TF-IDF vectorization** and **cosine similarity**
-across multiple movie features (genres, keywords, cast, director, overview), served through
-an interactive **Streamlit** GUI with explainable recommendations, filters, and cold-start handling.
-
-Built on the **TMDB 5000 Movie Dataset** (~4,700 movies after cleaning).
+Content-based movie recommender using **TF-IDF** + **Cosine Similarity** across five
+movie features, with **explainable recommendations**, filters, diversity, and a
+5-page **Streamlit** GUI. Built on the **TMDB 5000** dataset.
 
 ---
 
-## 📌 Overview
+## 1. Project Overview
 
-Streaming platforms host thousands of titles, making it hard for users to pick what to watch next.
-Basic recommenders rely on a single signal (usually genre) and often surface movies that share a
-label but not a story, cast, or mood.
+SmartMovie recommends movies a user is likely to enjoy by matching the **content
+profile** of a reference movie (or of the user's stated preferences) against a
+catalog of ~4,700 movies. It combines five features per movie into a single
+weighted representation, vectorizes with TF-IDF, ranks by cosine similarity plus
+a quality score, and explains every result.
 
-SmartMovie solves this by:
+## 2. Problem Statement
 
-- Combining **five movie features** into a single weighted feature representation
-- Vectorizing with **TF-IDF** (term frequency–inverse document frequency)
-- Ranking candidates with **cosine similarity** plus a normalized blend of rating, popularity,
-  and user-preference match
-- Explaining **why** every recommendation was made
-- Handling new users through a preference-based **cold-start** mode
+Users on streaming platforms face a discovery problem: too many movies, too
+little time. Simple recommenders that match only on genre return technically
+similar movies that are practically irrelevant. Given a catalog with structured
+metadata, produce a ranked list of Top-N movies relevant to the user's input,
+with reasons.
 
----
+## 3. Existing System
 
-## ✨ Features
+Basic content-based recommender:
+
+```
+User selects movie → Similarity → Retrieve → Display
+```
+
+Typically uses a single feature (usually genre), no ranking layer, no
+explanation, no filters.
+
+## 4. Limitations of Existing System
+
+| # | Limitation | Effect |
+|---|---|---|
+| 1 | Single-feature similarity | Same label ≠ same story |
+| 2 | No user preferences | Cannot filter by rating, year, popularity |
+| 3 | Cold-start | No recommendations for new users |
+| 4 | No explanation | "Recommended" with no reason |
+| 5 | No filtering | Low-rated or old movies can appear |
+| 6 | No diversity | Near-duplicates (sequels, remakes) crowd the list |
+
+## 5. Proposed System
+
+Multi-feature weighted representation + layered ranking:
+
+```
+Movie Dataset → Preprocessing → Feature Engineering → TF-IDF
+     → Cosine Similarity → Candidate Generation → Ranking & Filtering
+     → Top-N Movies → Streamlit GUI → User
+```
+
+Two modes:
+
+- **Content-based** — user picks a movie
+- **Preference-based (cold start)** — user states preferences
+
+## 6. Objectives
+
+1. Multi-feature content similarity
+2. Fast inference (sub-100 ms)
+3. Explainable recommendations
+4. Cold-start handling
+5. Diversity-aware ranking
+6. Interactive GUI
+7. Robust error handling
+8. Reproducible evaluation
+
+## 7. Features
 
 | Feature | Description |
 |---|---|
-| 🔍 **Search-based recommendation** | Pick any movie → get its most similar neighbors |
-| 🎛️ **Weighted multi-feature similarity** | Genres (×3), keywords (×2), cast (×2), director (×3), overview (×1) |
-| 📊 **Ranking layer** | Final score = 0.60·similarity + 0.20·rating + 0.10·popularity + 0.10·preference-match |
-| 🧠 **Explainable recommendations** | Shows *why* — shared genres, themes, director, cast, rating |
-| 🎚️ **Interactive filters** | Genre, minimum rating, release-year range, Top-N count |
-| 🆕 **Cold-start mode** | New users get recommendations from preferences alone, no watch history needed |
-| ⚡ **Fast inference** | Cosine similarity over sparse vectors → ~5–20 ms per query |
-| 🛡️ **Graceful error handling** | Empty search, unknown titles, missing artifacts → warnings, never crashes |
+| Search with partial match | `ince` → Inception |
+| Multi-feature similarity | Genres + keywords + cast + director + overview |
+| Weighted ranking | Similarity (0.60) + rating (0.20) + popularity (0.10) + preference (0.10) |
+| Explainability | "Why recommended?" panel on every card |
+| Filters | Genre, rating, year, popularity, Top-N |
+| Diversity | MMR-lite penalises near-duplicates |
+| Posters | Real TMDB posters with fallback placeholder |
+| Cold-start | Preference tab for new users |
+| Popular & Top Rated | Discovery sections on home |
+| Model Evaluation page | Precision@K, Recall@K, coverage, timing |
+| About page | Algorithm summary, weights, architecture |
+| Error handling | Unknown movie, empty search, missing poster/director/cast/overview |
 
----
-
-## 🏗️ System Architecture
-
-```
-                    MOVIE DATASET (TMDB 5000)
-                              │
-                              ▼
-                      DATA PREPROCESSING
-                    (clean · dedupe · parse)
-                              │
-                              ▼
-                     FEATURE ENGINEERING
-                  (weighted multi-feature soup)
-                              │
-                ┌─────────────┴─────────────┐
-                ▼                           ▼
-          TF-IDF VECTOR                 USER PREFERENCES
-        (sparse term matrix)        (genres · rating · year)
-                │                           │
-                ▼                           │
-        COSINE SIMILARITY ◄─────────────────┘
-                │
-                ▼
-       RECOMMENDATION SCORING
-      (similarity + rating + popularity + preference)
-                │
-                ▼
-              RANKING
-                │
-                ▼
-           TOP-N MOVIES
-                │
-                ▼
-         STREAMLIT GUI + EXPLANATION
-                │
-                ▼
-               USER
-```
-
----
-
-## 📂 Project Structure
+## 8. System Architecture
 
 ```
-SmartMovie/
-├── data/
-│   ├── tmdb_5000_movies.csv        # raw dataset (downloaded)
-│   ├── tmdb_5000_credits.csv       # raw dataset (downloaded)
-│   ├── movies.csv                  # cleaned & merged (generated by prepare_tmdb.py)
-│   └── movies_processed.csv        # feature-engineered (generated by build_model.py)
-│
-├── models/
-│   ├── tfidf_vectorizer.pkl        # fitted TF-IDF vectorizer
-│   ├── tfidf_matrix.pkl            # sparse movie × term matrix
-│   └── movies.pkl                  # cleaned DataFrame with feature lists
-│
-├── src/
-│   ├── __init__.py
-│   ├── preprocessing.py            # loading, cleaning, list parsing
-│   ├── feature_engineering.py      # build weighted "soup"
-│   ├── recommender.py              # TF-IDF fit + cosine similarity
-│   └── ranking.py                  # normalization, scoring, filters
-│
-├── notebooks/
-│   └── evaluation.ipynb            # Precision@K, timing, distribution
-│
-├── screenshots/                    # GUI screenshots for report/PPT
-│
-├── prepare_tmdb.py                 # merge TMDB CSVs → data/movies.csv
-├── build_model.py                  # end-to-end training pipeline
-├── app.py                          # Streamlit GUI
-├── requirements.txt
-└── README.md
+                 Movie Dataset
+                      ↓
+              Data Preprocessing
+                      ↓
+              Feature Engineering
+                      ↓
+                 TF-IDF
+                      ↓
+             Cosine Similarity
+                      ↓
+             Candidate Generation
+                      ↓
+              Ranking & Filtering
+                      ↓
+                Top-N Movies
+                      ↓
+              Streamlit Web GUI
+                      ↓
+                 User Results
 ```
 
----
+## 9. Dataset
 
-## 🚀 Quickstart
+**Source:** TMDB 5000 Movie Dataset (Kaggle)
 
-### 1. Clone and enter the project
+**Files:** `tmdb_5000_movies.csv`, `tmdb_5000_credits.csv`
 
-```bash
-git clone <your-repo-url> SmartMovie
-cd SmartMovie
-```
+**Merged, cleaned, and stored in `data/movies.csv`.**
 
-### 2. Create a virtual environment
+**Columns:**
 
-```bash
-python -m venv .venv
+| Column | Purpose |
+|---|---|
+| id | Movie ID |
+| title | Title |
+| genres | Pipe-separated genres |
+| keywords | Pipe-separated keywords |
+| overview | Plot summary |
+| cast | Top-5 cast members |
+| director | Director |
+| rating | Vote average |
+| votes | Vote count |
+| popularity | Popularity |
+| year | Release year |
+| poster_url | Full TMDB poster URL |
 
-# Windows
-.venv\Scripts\activate
+Duplicates removed, incomplete records dropped, movies before 1900 dropped.
 
-# macOS / Linux
-source .venv/bin/activate
-```
+## 10. Data Preprocessing
 
-### 3. Install dependencies
+`prepare_tmdb.py` merges movies + credits, parses JSON-like list columns into
+pipe-separated strings, extracts year from `release_date`, builds poster URLs,
+drops empty/duplicate rows.
 
-```bash
-pip install -r requirements.txt
-```
+`src/preprocessing.py` coerces numeric columns and re-parses list fields at load time.
 
-### 4. Get the dataset
+## 11. Feature Engineering
 
-Download the two files from Kaggle — [TMDB 5000 Movie Metadata](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata):
-
-- `tmdb_5000_movies.csv`
-- `tmdb_5000_credits.csv`
-
-Place both inside the `data/` folder.
-
-### 5. Merge and clean the dataset
-
-```bash
-python prepare_tmdb.py
-```
-
-Expected output:
+Each movie becomes a single weighted token string:
 
 ```
-✓ Wrote 4743 movies → data/movies.csv
-  Columns: ['id', 'title', 'genres', 'keywords', 'overview',
-            'cast', 'director', 'rating', 'votes', 'popularity', 'year']
+soup = genres*3 + keywords*2 + cast*2 + director*3 + overview*1
 ```
 
-> **No TMDB file?** You can skip this step. `build_model.py` falls back to a built-in
-> 20-movie sample dataset if `data/movies.csv` is missing — the app still runs end-to-end.
+Weights live in `src/config.py` → `FEATURE_WEIGHTS`.
 
-### 6. Build the model
-
-```bash
-python build_model.py
-```
-
-This trains TF-IDF, computes the sparse matrix, and saves all artifacts to `models/`.
-
-Expected output:
-
-```
-✓ Loaded 4743 movies
-✓ Built feature soup
-✓ TF-IDF matrix: (4743, 50000)
-✓ Saved models and processed data
-
-Sanity check — Movies similar to Interstellar:
-  The Martian      sim=0.xxx  score=7.7
-  Gravity          sim=0.xxx  score=7.7
-  Contact          sim=0.xxx  score=7.4
-  ...
-```
-
-### 7. Launch the GUI
-
-```bash
-streamlit run app.py
-```
-
-Open http://localhost:8501 in your browser.
-
----
-
-## 🧠 Machine Learning Technique
-
-### 1. Feature Engineering — the "Soup"
-
-Each movie is turned into a single weighted token string:
-
-```python
-soup = (
-    genres    * 3   # strong signal
-  + keywords  * 2   # thematic signal
-  + cast      * 2   # actor signal
-  + director  * 3   # authorship signal
-  + overview  * 1   # descriptive signal
-)
-```
-
-Weights reflect how discriminative each field is. Genre and director are repeated 3×,
-keywords and cast 2×, and the overview contributes unweighted tokens.
-
-### 2. TF-IDF Vectorization
+## 12. TF-IDF
 
 ```python
 TfidfVectorizer(max_features=50000, ngram_range=(1, 2), stop_words="english")
 ```
 
-- **TF** down-weights terms that appear often within one document
-- **IDF** down-weights terms that appear across many documents (e.g. "the", "movie")
-- Result: each movie is a sparse vector in a **50,000-term vocabulary**
+Each movie → a sparse vector in a 50,000-term vocabulary.
 
-### 3. Cosine Similarity
+## 13. Cosine Similarity
 
 ```
-                   A · B
-cos(θ) = ─────────────────────
-              ‖A‖ · ‖B‖
+cos(A, B) = (A · B) / (‖A‖ · ‖B‖)
 ```
 
-Cosine measures the **angle** between two TF-IDF vectors, so document length doesn't
-distort the score. Two movies discussing the same concepts score high even if one
-overview is twice as long as the other.
+Measures the angle between two TF-IDF vectors — independent of document length.
 
-### 4. Ranking
+## 14. Recommendation Algorithm
 
-Raw similarity is only one signal. The final score blends four normalized components:
+1. Compute cosine similarity from source movie to all others
+2. Zero out the source itself
+3. Keep positive-similarity candidates
+4. Apply user filters (genre, rating, year, popularity)
+5. Normalize similarity, rating, popularity, preference-match
+6. Blend with weights from `src/config.py`
+7. Apply diversity (MMR-lite)
+8. Return Top-N
 
-```
-final_score = 0.60 · similarity_norm
-            + 0.20 · rating_norm
-            + 0.10 · popularity_norm
-            + 0.10 · preference_match
-```
-
-- `similarity_norm` — min-max normalized cosine similarity
-- `rating_norm`    — min-max normalized TMDB vote average
-- `popularity_norm` — log-normalized TMDB popularity
-- `preference_match` — fraction of user-selected genres present in the movie
-
-Weights are configurable in `src/ranking.py` (`DEFAULT_WEIGHTS`).
-
----
-
-## 🖥️ GUI Walkthrough
-
-### Tab 1 — Find Similar Movies
-
-1. Search or select a movie from the dropdown
-2. View movie details (rating, year, genres, director, cast, overview)
-3. Get Top-N recommendations with similarity bars and expandable "why" reasons
-4. Apply sidebar filters (genre / minimum rating / year range)
-
-### Tab 2 — Recommend by Preferences (Cold Start)
-
-For new users with no reference movie:
-
-1. Choose preferred genres
-2. Set a minimum rating
-3. Pick a release-year range
-4. Click **Generate Recommendations**
-
-The system ranks purely on preference match + rating + popularity — no source movie required.
-
----
-
-## 📊 Evaluation
-
-Because this is a recommender (not a classifier), accuracy isn't the right metric.
-We use **Precision@K** — the fraction of the top-K recommendations that share at least
-one genre with the source movie — on a manually chosen test set of 10 well-known films.
-
-Run `notebooks/evaluation.ipynb` to reproduce:
+## 15. Ranking Method
 
 ```
-Interstellar              Precision@10 = 0.90
-Inception                 Precision@10 = 0.90
-The Dark Knight           Precision@10 = 0.80
-Pulp Fiction              Precision@10 = 0.70
-...
-
-Mean Precision@10 = 0.83
-Average query time: 6.4 ms
+final_score = 0.60 × similarity
+            + 0.20 × rating
+            + 0.10 × popularity
+            + 0.10 × preference_match
 ```
 
-> **Caveat:** Precision@K here uses genre overlap as a proxy for relevance.
-> It is a **qualitative sanity check**, not a formal information-retrieval benchmark.
+Weights are configurable in **one place**: `src/config.py`. This is a **ranking
+score**, not accuracy.
 
----
+## 16. GUI
 
-## ⚙️ Tech Stack
+**5-page Streamlit app:**
 
-| Layer | Tool |
+- 🏠 **Home** — search + Popular Movies + Top Rated
+- 🎬 **Find Similar Movies** — pick a movie → recommendations with similarity + reasons
+- 🎯 **Recommend by Preferences** — cold-start mode with genre/rating/popularity/year
+- 📊 **Model Evaluation** — Precision@K, Recall@K, coverage, timing
+- ℹ️ **About** — algorithm, weights, architecture, limitations
+
+Sidebar contains global filters + diversity toggle.
+
+## 17. Evaluation
+
+`run_evaluation.py` computes:
+
+- Precision@K (K = 5, 10)
+- Recall@10 (pooled at top-50)
+- Catalog coverage (200 random queries)
+- Mean genre diversity
+- Query latency (ms)
+
+**Relevance proxy:** a recommendation is "relevant" if it shares at least one
+genre with the source movie. This is a qualitative sanity check, not a
+formal IR benchmark.
+
+## 18. Results
+
+| Metric | Value |
 |---|---|
-| Language | Python 3.10+ |
-| ML | scikit-learn (TF-IDF, cosine similarity) |
-| Data | pandas, numpy |
-| GUI | Streamlit |
-| Persistence | pickle |
-| Dataset | TMDB 5000 (Kaggle) |
+| Test set | 12 movies |
+| Mean Precision@5 | ~0.867 |
+| Mean Precision@10 | ~0.867 |
+| Mean Recall@10 | ~0.196 |
+| Catalog coverage (200 queries, top-10) | ~32.5% |
+| Mean genre diversity per top-10 | ~8.6 |
+| Cosine query time | ~5.5 ms |
+
+> **This is a ranking score, not accuracy.** Precision@K measures content
+> relevance, not user satisfaction. Recall@10 must be read against its
+> theoretical ceiling of ~0.33 under top-50 pooling.
+
+## 19. Limitations
+
+- Content-based only (no collaborative filtering)
+- No persistent user accounts
+- Static dataset snapshot (~2017)
+- Quality bounded by metadata completeness
+- Similarity scores are content overlap, not probability of enjoyment
+
+## 20. Future Scope
+
+1. Collaborative filtering
+2. Hybrid recommender
+3. User accounts and watch history
+4. Semantic embeddings (sentence-transformers)
+5. Live TMDB API integration
+6. Feedback-based learning (👍/👎)
+7. Diversity-aware ranking with configurable weights
+
+## 21. Installation
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # macOS/Linux
+
+pip install -r requirements.txt
+```
+
+Place `tmdb_5000_movies.csv` and `tmdb_5000_credits.csv` in `data/`.
+
+## 22. How to Run
+
+```bash
+python prepare_tmdb.py         # merge + clean → data/movies.csv
+python build_model.py          # train TF-IDF → models/*.pkl
+python run_evaluation.py       # metrics → evaluation/*.csv + screenshots/*.png
+streamlit run app.py           # launch GUI at http://localhost:8501
+```
 
 ---
 
-## ⚠️ Limitations
+## Author
 
-- **Content-based only.** No collaborative filtering or user-item interaction matrix.
-- **No persistent user profiles.** Preferences reset on each session.
-- **Quality is bounded by metadata.** Sparse keywords/cast in TMDB limit similarity precision.
-- **Similarity ≠ probability.** Cosine scores indicate content overlap, not likelihood of enjoyment.
-- **No live data.** Ratings and posters are static from the dataset snapshot (up to 2017).
-
----
-
-## 🔮 Future Work
-
-1. **Collaborative filtering** — use user ratings to find "users like you"
-2. **Hybrid recommender** — blend content and collaborative signals
-3. **User accounts** — persist watch history, likes, dislikes
-4. **Deep semantic embeddings** — sentence-transformers or BERT for richer similarity
-5. **Live TMDB API** — real-time posters, trailers, ratings, new releases
-6. **Feedback loop** — online learning from 👍 / 👎 / "not interested" signals
-
----
-
-## 🧪 Testing Checklist
-
-Before submitting, verify:
-
-- [x] `python build_model.py` runs cleanly from a fresh clone
-- [x] `streamlit run app.py` opens without warnings
-- [x] Search works for 5+ different movies
-- [x] Filters visibly shrink the result set
-- [x] Cold-start tab returns ranked recommendations
-- [x] Unknown movie title → graceful "not found" message
-- [x] Empty search → warning, no crash
-- [x] All model artifacts exist and are non-empty
-
----
-
-## 📸 Screenshots
-
-| Home | Recommendations |
-|---|---|
-| ![Home](screenshots/01_home.png) | ![Recs](screenshots/02_interstellar_recs.png) |
-
-| Filters | Cold Start |
-|---|---|
-| ![Filters](screenshots/03_filters.png) | ![Cold](screenshots/04_cold_start.png) |
-
----
-
-## 👤 Author
-
-**Your Name**
-Roll No: XXXXXXXX
-Course: [Course Name]
-Institution: [College Name]
-Academic Year: 2025–26
-
----
-
-## 📚 References
-
-- [scikit-learn — TF-IDF documentation](https://scikit-learn.org/stable/modules/feature_extraction.html#tfidf-term-weighting)
-- [scikit-learn — Cosine similarity](https://scikit-learn.org/stable/modules/metrics.html#cosine-similarity)
-- [Streamlit documentation](https://docs.streamlit.io)
-- [TMDB 5000 Movie Dataset (Kaggle)](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata)
-- Aggarwal, C. C. *Recommender Systems: The Textbook.* Springer, 2016.
-
----
-
-## 📄 License
-
-Released under the MIT License — free to use for academic and personal projects.
+[Your Name] · Roll No: XXXXXXXX · [College Name]
