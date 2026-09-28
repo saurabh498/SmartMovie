@@ -1,0 +1,8 @@
+Metric,Value
+Test size,12.0
+Mean P@5,0.867
+Mean P@10,0.867
+Mean R@10,0.196
+Coverage (200q),0.3251
+Genre diversity,8.58
+Query time (ms),5.46
