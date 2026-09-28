@@ -6,11 +6,9 @@ Compares two models on the same test set:
     PROPOSED  =  TF-IDF + Cosine Similarity + Weighted Ranking
                  + Preference Matching + Diversity
 
-Outputs:
-    evaluation/evaluation_results.csv    (per-movie, both models)
-    evaluation/evaluation_summary.csv    (aggregate, both models)
-    screenshots/eval_precision_at_k.png
-    screenshots/eval_similarity_distribution.png
+Note on preference matching: since the dataset has no real user history,
+the source movie's own genres are used as the user preference vector.
+This makes the preference component of the ranking formula actually active.
 """
 import os
 import pickle
@@ -28,7 +26,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 sys.path.insert(0, os.path.abspath("."))
 
 from src.config import RANKING_WEIGHTS, DIVERSITY_ENABLED
-from src.ranking import score_candidates, apply_filters, diversify
+from src.ranking import score_candidates, diversify
 
 plt.rcParams["figure.dpi"] = 110
 plt.rcParams["axes.grid"] = True
@@ -40,7 +38,6 @@ SHOTS  = Path("screenshots")
 EVAL.mkdir(exist_ok=True)
 SHOTS.mkdir(exist_ok=True)
 
-# ---------- Load ----------
 with open(MODELS / "movies.pkl", "rb") as f:
     movies = pickle.load(f)
 with open(MODELS / "tfidf_matrix.pkl", "rb") as f:
@@ -69,7 +66,6 @@ def recall_at_k(source_idx, rec_indices, k=10, pool_size=50):
     src = set(movies.iloc[source_idx]["genres_list"])
     if not src:
         return np.nan
-    _, sims = top_k_by_similarity(source_idx, pool_size)
     sims_all = cosine_similarity(matrix[source_idx], matrix).flatten()
     sims_all[source_idx] = -1.0
     pool = np.argsort(sims_all)[::-1][:pool_size]
@@ -81,15 +77,21 @@ def recall_at_k(source_idx, rec_indices, k=10, pool_size=50):
 
 
 def genre_diversity(rec_indices):
-    """Number of distinct genres spanned by the recommendations."""
     gs = set()
     for i in rec_indices:
         gs.update(movies.iloc[i]["genres_list"])
     return len(gs)
 
 
-# ---------- Proposed model ----------
-def proposed_recommendations(source_idx, k=10, user_genres=None):
+# ---------- Proposed model — preference now active ----------
+def proposed_recommendations(source_idx, k=10):
+    """Full pipeline: similarity + rating + popularity + preference + diversity.
+
+    The source movie's own genres are used as the user-preference vector.
+    This is the evaluation proxy for 'user wants more like this movie'.
+    """
+    source_genres = movies.iloc[source_idx]["genres_list"]
+
     sims = cosine_similarity(matrix[source_idx], matrix).flatten()
     sims[source_idx] = -1.0
 
@@ -99,8 +101,9 @@ def proposed_recommendations(source_idx, k=10, user_genres=None):
     if cand.empty:
         return np.array([], dtype=int)
 
+    # ← Fixed: user_genres is now passed so preference matching is active
     ranked = score_candidates(cand, cand["similarity"].values,
-                              user_genres=user_genres)
+                              user_genres=source_genres)
 
     if DIVERSITY_ENABLED and len(ranked) > k:
         ranked = diversify(ranked, matrix, k)
@@ -135,12 +138,10 @@ for idx, name in zip(test_idx, test_names):
 
     rows.append({
         "title": name,
-        # Baseline
         "base_P@5":  round(precision_at_k(idx, base_idx, 5), 3),
         "base_P@10": round(precision_at_k(idx, base_idx, 10), 3),
         "base_R@10": round(recall_at_k(idx, base_idx, 10, 50), 3),
         "base_div":  genre_diversity(base_idx),
-        # Proposed
         "prop_P@5":  round(precision_at_k(idx, prop_idx, 5), 3) if len(prop_idx) else np.nan,
         "prop_P@10": round(precision_at_k(idx, prop_idx, 10), 3) if len(prop_idx) else np.nan,
         "prop_R@10": round(recall_at_k(idx, prop_idx, 10, 50), 3) if len(prop_idx) else np.nan,
@@ -159,7 +160,6 @@ base_seen, prop_seen = set(), set()
 for idx in sample:
     b_idx, _ = top_k_by_similarity(idx, k=10)
     base_seen.update(movies.iloc[b_idx]["id"].tolist())
-
     p_idx = proposed_recommendations(idx, k=10)
     if len(p_idx):
         prop_seen.update(movies.iloc[p_idx]["id"].tolist())
@@ -170,7 +170,7 @@ coverage_prop = len(prop_seen) / len(movies)
 
 # ---------- Query time ----------
 def timeit(fn, n=100):
-    fn(0)  # warmup
+    fn(0)
     t0 = time.perf_counter()
     for _ in range(n):
         fn(0)
@@ -261,7 +261,12 @@ if not inter.empty:
 df_results.to_csv(EVAL / "evaluation_results.csv", index=False)
 summary.to_csv(EVAL / "evaluation_summary.csv", index=False)
 
+# Also dump the dataset size so README can stay in sync
+with open(EVAL / "dataset_size.txt", "w") as f:
+    f.write(str(len(movies)))
+
 print(f"\n✓ Saved: {EVAL}/evaluation_results.csv")
 print(f"✓ Saved: {EVAL}/evaluation_summary.csv")
+print(f"✓ Saved: {EVAL}/dataset_size.txt")
 print(f"✓ Saved: {SHOTS}/eval_precision_at_k.png")
 print(f"✓ Saved: {SHOTS}/eval_similarity_distribution.png")

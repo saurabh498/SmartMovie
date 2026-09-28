@@ -9,9 +9,10 @@ movie features, with **explainable recommendations**, filters, diversity, and a
 ## 1. Project Overview
 
 SmartMovie recommends movies by matching the content profile of a reference movie
-(or the user's stated preferences) against a catalog of ~4,700 movies. It combines
-five features per movie into a weighted representation, vectorizes with TF-IDF,
-ranks with cosine similarity plus a blended quality score, and explains every result.
+(or the user's stated preferences) against a catalog of **4,768 movies**. It
+combines five features per movie into a weighted representation, vectorizes with
+TF-IDF, ranks with cosine similarity plus a blended quality score, and explains
+every result.
 
 ## 2. Problem Statement
 
@@ -54,7 +55,7 @@ Two modes: **content-based** (pick a movie) and **preference-based** (cold start
 ## 6. Objectives
 
 1. Multi-feature content similarity
-2. Fast inference (sub-100 ms)
+2. Fast inference suitable for interactive recommendation
 3. Explainable recommendations with score breakdown
 4. Cold-start handling via preferences
 5. Diversity-aware ranking
@@ -74,7 +75,7 @@ Two modes: **content-based** (pick a movie) and **preference-based** (cold start
 | Low-similarity fallback | Warns when best match is below 15% similarity |
 | Filters + Reset | Genre, rating, year, popularity, Top-N; Reset button |
 | Diversity (MMR-lite) | Penalizes near-duplicates already picked |
-| Posters | Real TMDB posters with gradient fallback |
+| Poster fallback | Gradient card when poster URL is unavailable |
 | Cold-start mode | Preference tab for new users |
 | Popular & Top Rated | Discovery sections on home |
 | Model Evaluation page | Baseline vs Proposed comparison |
@@ -111,7 +112,7 @@ Two modes: **content-based** (pick a movie) and **preference-based** (cold start
 
 **Files:** `tmdb_5000_movies.csv`, `tmdb_5000_credits.csv`
 
-**Merged + cleaned → `data/movies.csv`.**
+**Merged + cleaned → `data/movies.csv` (4,768 movies).**
 
 | Column | Purpose |
 |---|---|
@@ -126,14 +127,19 @@ Two modes: **content-based** (pick a movie) and **preference-based** (cold start
 | votes | Vote count |
 | popularity | Popularity |
 | year | Release year |
-| poster_url | TMDB poster URL |
+| poster_url | TMDB poster URL (empty if unavailable) |
 
 Duplicates removed, incomplete records dropped, movies before 1900 dropped.
+
+**Note on posters:** the standard Kaggle TMDB 5000 CSV does not include a
+`poster_path` column. When absent, `poster_url` is left empty and the GUI
+renders a gradient poster card. Real posters could be integrated via the
+TMDB API in future work.
 
 ## 10. Data Preprocessing
 
 `prepare_tmdb.py` merges movies + credits, parses JSON-like list columns into
-pipe-separated strings, extracts year, builds poster URLs, drops empty/duplicate rows.
+pipe-separated strings, extracts year, drops empty/duplicate rows.
 
 `src/preprocessing.py` re-parses list fields at load time and coerces numeric columns.
 
@@ -209,23 +215,53 @@ Sidebar has filters + Reset Filters + diversity toggle.
 **Relevance proxy:** a recommendation is "relevant" if it shares at least one genre
 with the source movie. This is a qualitative check, not a formal IR benchmark.
 
+**Preference matching in evaluation:** since the dataset has no real user history,
+the source movie's own genres are used as the preference vector. This makes the
+preference component of the ranking formula genuinely active during evaluation.
+
+<!-- README-RESULTS:START -->
 ## 18. Results
 
-See `evaluation/evaluation_summary.csv` for the current numbers on your dataset.
-Typical values on TMDB 5000:
+Evaluated on **4,768 movies** after cleaning. Test set: 12 well-known
+movies spanning multiple genres and decades. Relevance is defined as **sharing
+at least one genre** with the source movie (a qualitative proxy, not user
+satisfaction).
+
+### Baseline vs Proposed
 
 | Metric | Baseline | Proposed |
 |---|---|---|
-| Precision@5 | ~0.82 | ~0.87 |
-| Precision@10 | ~0.80 | ~0.87 |
-| Recall@10 | ~0.18 | ~0.20 |
-| Coverage (200 queries) | ~28% | ~32% |
-| Mean genre diversity | ~8.0 | ~8.6 |
-| Query time (ms) | ~5.0 | ~5.5 |
+| Precision@5 | 0.850 | 0.917 |
+| Precision@10 | 0.842 | 0.917 |
+| Recall@10 | 0.193 | 0.209 |
+| Catalog coverage (200 queries) | 32.6% | 31.5% |
+| Mean genre diversity | 9.17 | 8.58 |
+| Query time (ms) | 25.2 | 108.0 |
+
+### Interpretation
+
+- **Precision@5 and Precision@10 improved.** The proposed model reorders
+  the top of the list using rating, popularity, and preference signals,
+  which lifts genre-overlap precision relative to pure similarity ranking.
+- **Recall@10 improved slightly.** Recall is bounded above by roughly 0.33
+  under top-50 pooling; values near 0.20 represent about 60% of the
+  achievable ceiling.
+- **Catalog coverage decreased marginally.** The ranking layer concentrates
+  on high-quality candidates, so slightly fewer distinct movies appear
+  across 200 queries. The change is small (a few percent).
+- **Mean genre diversity decreased slightly.** Diversity prioritises
+  variety within each top-10 list, but combined with the ranking bias
+  toward highly-rated titles, the average genre spread per list drops
+  marginally.
+- **Query time increased.** The proposed model runs similarity, ranking,
+  normalization, and diversity passes, so it is measurably slower than the
+  baseline. Both remain interactive for a Streamlit GUI.
 
 > **These are ranking metrics, not accuracy.** Precision@K measures content
-> relevance, not user satisfaction. Recall@10 is bounded above by ~0.33 under
-> top-50 pooling.
+> relevance, not user satisfaction. Not every metric improves for every
+> query — the Proposed model trades a small amount of coverage, diversity,
+> and speed for higher top-of-list precision.
+<!-- README-RESULTS:END -->
 
 ## 19. Limitations
 
@@ -234,6 +270,9 @@ Typical values on TMDB 5000:
 - Static dataset snapshot (~2017)
 - Quality bounded by metadata completeness
 - Similarity scores are content overlap, not probability of enjoyment
+- Poster URLs unavailable in the base Kaggle CSV
+- Evaluation uses genre-overlap proxy, not real user feedback
+- Cold-start rankings can surface low-vote movies with inflated ratings
 
 ## 20. Future Scope
 
@@ -241,8 +280,9 @@ Typical values on TMDB 5000:
 2. Hybrid recommender
 3. User accounts and watch history
 4. Semantic embeddings (sentence-transformers)
-5. Live TMDB API integration
-6. Feedback-based learning (👍/👎)
+5. Live TMDB API integration for posters and trailers
+6. Feedback-based learning (👍/👎 signals)
+7. Diversity-aware ranking with configurable weights
 
 ## 21. Installation
 
@@ -262,5 +302,6 @@ Place `tmdb_5000_movies.csv` and `tmdb_5000_credits.csv` in `data/`.
 python prepare_tmdb.py         # merge + clean → data/movies.csv
 python build_model.py          # train TF-IDF → models/*.pkl
 python run_evaluation.py       # metrics → evaluation/*.csv + charts
+python sync_readme.py          # refresh the Results section above
 streamlit run app.py           # launch GUI at http://localhost:8501
 ```
