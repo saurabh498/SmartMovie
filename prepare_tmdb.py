@@ -1,8 +1,13 @@
 """Merge TMDB 5000 movies + credits into the SmartMovie schema.
 
 Output:
-    data/movies.csv  — columns: id, title, genres, keywords, overview,
-                      cast, director, rating, votes, popularity, year, poster_url
+    data/movies.csv — id, title, genres, keywords, overview, cast,
+                      director, rating, votes, popularity, year, poster_url
+
+Note: the standard Kaggle TMDB 5000 CSV does NOT contain a poster_path
+column. When it's missing, poster_url is left empty and the Streamlit GUI
+falls back to a gradient poster card. To enable real posters, either use a
+TMDB dump that includes poster_path, or integrate the TMDB API.
 """
 import ast
 import os
@@ -45,7 +50,6 @@ def extract_director(crew_json):
 
 
 def build_poster_url(path):
-    """Convert '/abc.jpg' → full TMDB URL. Empty string if missing."""
     if not isinstance(path, str) or not path.strip():
         return ""
     path = path.strip()
@@ -63,17 +67,26 @@ def main():
     movies = pd.read_csv(MOVIES_FILE)
     credits = pd.read_csv(CREDITS_FILE)
     print(f"Loaded: movies={movies.shape}, credits={credits.shape}")
+    print(f"Movies columns: {list(movies.columns)}")
 
-    # Credits
+    # --- Poster detection ---
+    has_poster_col = "poster_path" in movies.columns
+    if has_poster_col:
+        print("✓ Found poster_path — building poster URLs")
+        movies["poster_url"] = movies["poster_path"].apply(build_poster_url)
+    else:
+        print("⚠ No 'poster_path' column found — poster_url will be empty.")
+        print("  The Streamlit GUI will use its gradient poster fallback.")
+        movies["poster_url"] = ""
+
+    # --- Credits ---
     credits["cast_names"] = credits["cast"].apply(lambda s: parse_json_list(s, "name", 5))
     credits["director"]   = credits["crew"].apply(extract_director)
     credits = credits.rename(columns={"movie_id": "id"})[["id", "cast_names", "director"]]
 
-    # Movies
+    # --- Movies ---
     movies["genres"]   = movies["genres"].apply(lambda s: parse_json_list(s, "name"))
     movies["keywords"] = movies["keywords"].apply(lambda s: parse_json_list(s, "name"))
-    movies["poster_url"] = movies.get("poster_path", pd.Series([""] * len(movies))
-                                     ).apply(build_poster_url)
 
     merged = movies.merge(credits, on="id", how="left")
     merged["rating"]     = pd.to_numeric(merged["vote_average"], errors="coerce").fillna(0.0)
@@ -87,7 +100,6 @@ def main():
         "rating", "votes", "popularity", "year", "poster_url",
     ]].rename(columns={"cast_names": "cast"})
 
-    # Clean
     final = final.dropna(subset=["title", "overview"])
     final = final[final["overview"].astype(str).str.strip() != ""]
     final = final[final["genres"].astype(str).str.strip() != ""]

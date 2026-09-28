@@ -1,13 +1,13 @@
-title,P@5,P@10,R@10
-Interstellar,1.0,1.0,0.208
-Inception,0.8,0.9,0.2
-The Dark Knight,1.0,1.0,0.204
-Pulp Fiction,1.0,0.9,0.2
-Avatar,1.0,1.0,0.208
-The Matrix,1.0,1.0,0.213
-Fight Club,0.8,0.8,0.235
-Forrest Gump,0.6,0.6,0.136
-The Shawshank Redemption,0.6,0.7,0.171
-The Godfather,1.0,0.9,0.188
-Whiplash,0.6,0.6,0.188
-Mad Max: Fury Road,1.0,1.0,0.204
+title,base_P@5,base_P@10,base_R@10,base_div,prop_P@5,prop_P@10,prop_R@10,prop_div
+Interstellar,1.0,1.0,0.2,7,1.0,1.0,0.2,9
+Inception,0.8,0.9,0.191,9,0.8,0.9,0.191,9
+The Dark Knight,1.0,1.0,0.213,8,1.0,1.0,0.213,9
+Pulp Fiction,0.8,0.9,0.205,10,1.0,0.9,0.205,10
+Avatar,1.0,1.0,0.208,10,1.0,1.0,0.208,9
+The Matrix,0.8,0.9,0.2,10,1.0,0.9,0.2,10
+Fight Club,0.8,0.8,0.235,7,0.8,0.8,0.235,7
+Forrest Gump,0.4,0.5,0.116,11,0.6,0.5,0.116,11
+The Shawshank Redemption,0.8,0.7,0.184,11,0.8,0.8,0.211,10
+The Godfather,1.0,0.9,0.188,10,1.0,0.9,0.188,10
+Whiplash,0.8,0.5,0.156,10,0.8,0.5,0.156,10
+Mad Max: Fury Road,1.0,1.0,0.217,7,1.0,1.0,0.196,7

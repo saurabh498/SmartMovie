@@ -1,8 +1,8 @@
-Metric,Value
-Test size,12.0
-Mean P@5,0.867
-Mean P@10,0.867
-Mean R@10,0.196
-Coverage (200q),0.3251
-Genre diversity,8.58
-Query time (ms),5.75
+Metric,Baseline,Proposed
+Test set size,12.0,12.0
+Precision@5,0.85,0.9
+Precision@10,0.842,0.85
+Recall@10,0.193,0.193
+Coverage (200 queries),0.3259,0.3156
+Mean genre diversity,9.17,9.25
+Query time (ms),14.39,127.77
